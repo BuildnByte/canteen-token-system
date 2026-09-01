@@ -69,3 +69,5 @@ App runs at `http://localhost:8082`.
 ## Project Status
 
 MVP skeleton (Week 3-4). See the project board for sprint progress.
+
+<!-- Jenkins CI verified -->
