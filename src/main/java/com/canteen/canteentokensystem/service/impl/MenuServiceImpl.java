@@ -21,6 +21,9 @@ public class MenuServiceImpl implements MenuService {
 
     @Override
     public MenuItem addMenuItem(MenuItem item) {
+        if (item.getPrice() == null || item.getPrice().signum() < 0) {
+            throw new IllegalArgumentException("Price must be non-negative");
+        }
         return menuItemRepository.save(item);
     }
 }
