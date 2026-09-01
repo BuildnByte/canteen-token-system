@@ -32,6 +32,9 @@ public class TokenServiceImpl implements TokenService {
     public TokenResponse createToken(CreateTokenRequest request) {
         User student = userRepository.findById(request.studentId())
                 .orElseThrow(() -> new EntityNotFoundException("Student not found: " + request.studentId()));
+        if (request.items() == null || request.items().isBlank()) {
+            throw new IllegalArgumentException("Order must contain at least one item");
+        }        
         if (request.items() != null && request.items().length() > 2000) {
     throw new IllegalArgumentException("Order payload too large");
 }
