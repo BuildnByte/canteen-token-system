@@ -32,7 +32,9 @@ public class TokenServiceImpl implements TokenService {
     public TokenResponse createToken(CreateTokenRequest request) {
         User student = userRepository.findById(request.studentId())
                 .orElseThrow(() -> new EntityNotFoundException("Student not found: " + request.studentId()));
-
+        if (request.items() == null || request.items().isBlank()) {
+            throw new IllegalArgumentException("Order must contain at least one item");
+        }
         Token token = new Token();
         token.setStudent(student);
         token.setItems(request.items());
