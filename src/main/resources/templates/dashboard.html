@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard - Canteen Token System</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+    <nav>
+        <a class="brand" href="/">🍽️ Canteen Token System</a>
+        <div class="links">
+            <a href="/menu">Menu</a>
+            <a href="/queue">Staff Queue</a>
+            <a href="/dashboard">Dashboard</a>
+        </div>
+    </nav>
+    <main>
+        <h1 class="page-title">Admin Dashboard</h1>
+
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div class="num" th:text="${summary != null ? summary.totalOrdersToday : 0}">0</div>
+                <div class="label">Orders today</div>
+            </div>
+            <div class="summary-card" th:each="entry : ${summary != null ? summary.statusBreakdown : {}}">
+                <div class="num" th:text="${entry.value}">0</div>
+                <div class="label" th:text="${entry.key}">STATUS</div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

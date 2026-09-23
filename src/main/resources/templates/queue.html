@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Staff Queue - Canteen Token System</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+    <nav>
+        <a class="brand" href="/">🍽️ Canteen Token System</a>
+        <div class="links">
+            <a href="/menu">Menu</a>
+            <a href="/queue">Staff Queue</a>
+            <a href="/dashboard">Dashboard</a>
+        </div>
+    </nav>
+    <main>
+        <h1 class="page-title">Active Order Queue</h1>
+
+        <div th:if="${tokens == null or tokens.isEmpty()}" class="empty-state">
+            <p>No active orders right now.</p>
+        </div>
+
+        <table th:unless="${tokens == null or tokens.isEmpty()}">
+            <tr>
+                <th>Token #</th>
+                <th>Student</th>
+                <th>Items</th>
+                <th>Status</th>
+            </tr>
+            <tr th:each="token : ${tokens}">
+                <td th:text="${token.id}">1</td>
+                <td th:text="${token.studentName}">Name</td>
+                <td th:text="${token.items}">[]</td>
+                <td>
+                    <span class="status-badge" th:classappend="'status-' + ${token.status}" th:text="${token.status}">PENDING</span>
+                </td>
+            </tr>
+        </table>
+    </main>
+</body>
+</html>
