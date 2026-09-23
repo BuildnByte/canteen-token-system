@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>College Canteen Token System</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+    <nav>
+        <a class="brand" href="/">🍽️ Canteen Token System</a>
+        <div class="links">
+            <a href="/menu">Menu</a>
+            <a href="/queue">Staff Queue</a>
+            <a href="/dashboard">Dashboard</a>
+        </div>
+    </nav>
+    <main>
+        <div class="hero">
+            <h1>Skip the line. Order ahead.</h1>
+            <p>Browse today's menu, place your order, and track it in real time.</p>
+            <a class="btn" href="/menu">View Menu →</a>
+        </div>
+
+        <div class="card-grid">
+            <div class="card">
+                <h3>🧾 For Students</h3>
+                <p>Order from the menu and get a token — no more standing in line.</p>
+                <a href="/menu">Order now</a>
+            </div>
+            <div class="card">
+                <h3>👨‍🍳 For Staff</h3>
+                <p>See the live order queue and update status as you prepare food.</p>
+                <a href="/queue">View queue</a>
+            </div>
+            <div class="card">
+                <h3>📊 For Admins</h3>
+                <p>Track daily order volume and status breakdown at a glance.</p>
+                <a href="/dashboard">View dashboard</a>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

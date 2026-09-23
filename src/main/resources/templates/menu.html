@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Menu - Canteen Token System</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+    <nav>
+        <a class="brand" href="/">🍽️ Canteen Token System</a>
+        <div class="links">
+            <a href="/menu">Menu</a>
+            <a href="/queue">Staff Queue</a>
+            <a href="/dashboard">Dashboard</a>
+        </div>
+    </nav>
+    <main>
+        <h1 class="page-title">Today's Menu</h1>
+
+        <div th:if="${menuItems == null or menuItems.isEmpty()}" class="empty-state">
+            <p>No menu items yet. Ask an admin to add some via <code>POST /api/menu</code>.</p>
+        </div>
+
+        <div class="card-grid" th:unless="${menuItems == null or menuItems.isEmpty()}">
+            <div class="card" th:each="item : ${menuItems}">
+                <h3 th:text="${item.name}">Item name</h3>
+                <p class="price" th:text="'₹' + ${item.price}">₹0.00</p>
+                <p th:if="${!item.available}" class="unavailable">Currently unavailable</p>
+                <form th:if="${item.available}" action="#">
+                    <button type="button" class="btn btn-primary" disabled title="Order flow coming soon">Add to order</button>
+                </form>
+            </div>
+        </div>
+    </main>
+</body>
+</html>
