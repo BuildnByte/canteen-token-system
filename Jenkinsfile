@@ -28,8 +28,12 @@ pipeline {
         }
         stage('Deploy') {
             steps {
-                bat "taskkill /F /IM java.exe /T || exit 0"
-                bat "start /B java -jar target\\canteen-token-system-0.0.1-SNAPSHOT.jar --server.port=%DEPLOY_PORT%"
+                bat """
+                    for /f "tokens=5" %%p in ('netstat -aon ^| findstr :%DEPLOY_PORT%') do (
+                    taskkill /F /PID %%p 2>nul || exit 0
+                    )
+                    start /B java -jar target\\canteen-token-system-0.0.1-SNAPSHOT.jar --server.port=%DEPLOY_PORT%
+                """
             }
         }
     }
