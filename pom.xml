@@ -81,7 +81,6 @@
 		<dependency>
 			<groupId>org.springframework.security</groupId>
 			<artifactId>spring-security-test</artifactId>
-<<<<<<< Updated upstream
 			<scope>test</scope>
 		</dependency>
 		<dependency>
@@ -94,8 +93,6 @@
 			<groupId>io.github.bonigarcia</groupId>
 			<artifactId>webdrivermanager</artifactId>
 			<version>5.9.2</version>
-=======
->>>>>>> Stashed changes
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
