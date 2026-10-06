@@ -38,13 +38,17 @@ pipeline {
                 archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
             }
         }
-        stage('Deploy') {
+        stage('Docker Build') {
+            steps {
+                bat 'docker build -t canteen-token-system:%BUILD_NUMBER% -t canteen-token-system:latest .'
+            }
+        }
+        stage('Docker Deploy') {
             steps {
                 bat """
-                    for /f "tokens=5" %%p in ('netstat -aon ^| findstr :%DEPLOY_PORT%') do (
-                        taskkill /F /PID %%p 2>nul || exit 0
-                    )
-                    start /B java -jar target\\canteen-token-system-0.0.1-SNAPSHOT.jar --server.port=%DEPLOY_PORT%
+                    docker stop canteen-app || echo "No container to stop"
+                    docker rm canteen-app || echo "No container to remove"
+                    docker run -d -p %DEPLOY_PORT%:8082 -e SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/canteen_db --name canteen-app canteen-token-system:%BUILD_NUMBER%
                 """
             }
         }
