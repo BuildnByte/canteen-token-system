@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * Selenium WebDriver tests covering the critical user journeys:
@@ -47,7 +48,7 @@ class UserJourneySeleniumTest {
     @BeforeEach
     void setup() {
         ChromeOptions options = new ChromeOptions();
-        options.addArguments("--headless=new", "--no-sandbox", "--disable-dev-shm-usage");
+        options.addArguments("--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--window-size=1920,1080");
         driver = new ChromeDriver(options);
         driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(5));
         baseUrl = "http://localhost:" + port;
@@ -70,15 +71,40 @@ class UserJourneySeleniumTest {
         }
     }
 
+    @Autowired
+    private com.canteen.canteentokensystem.service.UserService userService;
+
+    private String createAdminAndLogin() {
+        String email = "admin" + System.currentTimeMillis() + "@test.com";
+        com.canteen.canteentokensystem.dto.AuthDtos.RegisterRequest req = 
+            new com.canteen.canteentokensystem.dto.AuthDtos.RegisterRequest("Admin Test", email, "password123", com.canteen.canteentokensystem.model.Role.ADMIN);
+        com.canteen.canteentokensystem.model.User user = userService.register(req);
+        userService.updateUserRole(user.getId(), com.canteen.canteentokensystem.model.Role.ADMIN);
+
+        driver.get(baseUrl + "/login");
+        driver.findElement(By.id("email")).sendKeys(email);
+        driver.findElement(By.id("password")).sendKeys("password123");
+        WebElement loginBtn = driver.findElement(By.id("submit-btn"));
+        ((org.openqa.selenium.JavascriptExecutor) driver).executeScript("arguments[0].click();", loginBtn);
+        
+        // Wait for redirect to dashboard
+        new org.openqa.selenium.support.ui.WebDriverWait(driver, Duration.ofSeconds(5))
+                .until(d -> d.getCurrentUrl().endsWith("/dashboard"));
+        return email;
+    }
+
     @Test
-    @DisplayName("Journey 1: Home page loads with navigation links")
+    @DisplayName("Journey 1: Home page loads with navigation links for guest")
     void homePageLoadsWithNavigation() {
         try {
             driver.get(baseUrl + "/");
             assertTrue(driver.getTitle().contains("Canteen"), "Title should mention Canteen");
 
-            List<WebElement> navLinks = driver.findElements(By.cssSelector("nav .links a"));
-            assertEquals(3, navLinks.size(), "Expected 3 nav links (Menu, Queue, Dashboard)");
+            List<WebElement> navLinks = driver.findElements(By.cssSelector(".nav-links a"));
+            assertFalse(navLinks.isEmpty(), "Guest should see nav links (e.g. Menu)");
+            
+            WebElement signIn = driver.findElement(By.linkText("Sign in"));
+            assertNotNull(signIn, "Guest should see Sign in button");
         } catch (AssertionError e) {
             screenshotOnFailure("homePageLoadsWithNavigation");
             throw e;
@@ -92,7 +118,7 @@ class UserJourneySeleniumTest {
             driver.get(baseUrl + "/menu");
             assertTrue(driver.getTitle().contains("Menu"));
 
-            boolean hasCards = !driver.findElements(By.cssSelector(".card-grid .card")).isEmpty();
+            boolean hasCards = !driver.findElements(By.cssSelector(".card-grid .menu-card")).isEmpty();
             boolean hasEmptyState = !driver.findElements(By.cssSelector(".empty-state")).isEmpty();
             assertTrue(hasCards || hasEmptyState, "Menu should show items or an empty state");
         } catch (AssertionError e) {
@@ -102,28 +128,42 @@ class UserJourneySeleniumTest {
     }
 
     @Test
-    @DisplayName("Journey 3: Staff queue page renders tokens or empty state")
-    void queuePageRenders() {
+    @DisplayName("Journey 3: Student auth journey and role enforcement")
+    void authJourneyAndRoleEnforcement() {
         try {
-            driver.get(baseUrl + "/queue");
+            String email = "student" + System.currentTimeMillis() + "@test.com";
+            driver.get(baseUrl + "/register");
+            driver.findElement(By.id("name")).sendKeys("Test Student");
+            driver.findElement(By.id("email")).sendKeys(email);
+            driver.findElement(By.id("password")).sendKeys("password123");
+            WebElement submitBtn = driver.findElement(By.id("submit-btn"));
+            ((org.openqa.selenium.JavascriptExecutor) driver).executeScript("arguments[0].click();", submitBtn);
 
-            boolean hasTable = !driver.findElements(By.cssSelector("table")).isEmpty();
-            boolean hasEmptyState = !driver.findElements(By.cssSelector(".empty-state")).isEmpty();
-            assertTrue(hasTable || hasEmptyState, "Queue should show a table or an empty state");
+            // Wait for redirect to /menu (since students go to menu)
+            new org.openqa.selenium.support.ui.WebDriverWait(driver, Duration.ofSeconds(5))
+                    .until(d -> d.getCurrentUrl().endsWith("/menu"));
+            
+            // Attempt to go to dashboard (admin only)
+            driver.get(baseUrl + "/dashboard");
+            
+            // Should be redirected back to /menu by JS role enforcement
+            new org.openqa.selenium.support.ui.WebDriverWait(driver, Duration.ofSeconds(5))
+                    .until(d -> d.getCurrentUrl().endsWith("/menu"));
+                    
         } catch (AssertionError e) {
-            screenshotOnFailure("queuePageRenders");
+            screenshotOnFailure("authJourneyAndRoleEnforcement");
             throw e;
         }
     }
 
     @Test
-    @DisplayName("Journey 4: Dashboard shows summary tiles")
+    @DisplayName("Journey 4: Admin Dashboard renders summary tiles")
     void dashboardPageRenders() {
         try {
-            driver.get(baseUrl + "/dashboard");
+            createAdminAndLogin();
 
-            List<WebElement> summaryCards = driver.findElements(By.cssSelector(".summary-card"));
-            assertFalse(summaryCards.isEmpty(), "Dashboard should render at least one summary tile");
+            List<WebElement> summaryCards = driver.findElements(By.cssSelector(".stat-card"));
+            assertFalse(summaryCards.isEmpty(), "Dashboard should render at least one stat card");
         } catch (AssertionError e) {
             screenshotOnFailure("dashboardPageRenders");
             throw e;
@@ -131,19 +171,25 @@ class UserJourneySeleniumTest {
     }
 
     @Test
-    @DisplayName("Journey 5: Navigate across all pages via nav bar")
+    @DisplayName("Journey 5: Admin navigation between pages works")
     void navigationBetweenPagesWorks() {
         try {
-            driver.get(baseUrl + "/");
+            createAdminAndLogin();
 
-            driver.findElement(By.linkText("Menu")).click();
-            assertTrue(driver.getCurrentUrl().endsWith("/menu"));
+            WebElement menuLink = driver.findElement(By.cssSelector("a[href='/admin/menu']"));
+            ((org.openqa.selenium.JavascriptExecutor) driver).executeScript("arguments[0].click();", menuLink);
+            new org.openqa.selenium.support.ui.WebDriverWait(driver, Duration.ofSeconds(5))
+                    .until(d -> d.getCurrentUrl().endsWith("/admin/menu"));
 
-            driver.findElement(By.linkText("Staff Queue")).click();
-            assertTrue(driver.getCurrentUrl().endsWith("/queue"));
+            WebElement queueLink = driver.findElement(By.cssSelector("a[href='/staff/queue']"));
+            ((org.openqa.selenium.JavascriptExecutor) driver).executeScript("arguments[0].click();", queueLink);
+            new org.openqa.selenium.support.ui.WebDriverWait(driver, Duration.ofSeconds(5))
+                    .until(d -> d.getCurrentUrl().endsWith("/staff/queue"));
 
-            driver.findElement(By.linkText("Dashboard")).click();
-            assertTrue(driver.getCurrentUrl().endsWith("/dashboard"));
+            WebElement dashLink = driver.findElement(By.cssSelector("a[href='/dashboard']"));
+            ((org.openqa.selenium.JavascriptExecutor) driver).executeScript("arguments[0].click();", dashLink);
+            new org.openqa.selenium.support.ui.WebDriverWait(driver, Duration.ofSeconds(5))
+                    .until(d -> d.getCurrentUrl().endsWith("/dashboard"));
         } catch (AssertionError e) {
             screenshotOnFailure("navigationBetweenPagesWorks");
             throw e;

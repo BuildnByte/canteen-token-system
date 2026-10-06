@@ -22,8 +22,16 @@ public class Token {
     @JoinColumn(name = "student_id", nullable = false)
     private User student;
 
+    /**
+     * Staff member who accepted/claimed this order from the global queue.
+     * NULL means the order has not been accepted by any staff yet.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "accepted_by")
+    private User acceptedBy;
+
     // Ordered items and quantities, stored as JSON text.
-    // e.g. [{"menuItemId":1,"name":"Samosa","qty":2}]
+    // e.g. [{\"menuItemId\":1,\"name\":\"Samosa\",\"qty\":2,\"price\":30}]
     @Lob
     @Column(nullable = false)
     private String items;

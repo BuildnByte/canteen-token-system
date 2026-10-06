@@ -26,4 +26,7 @@ public class MenuItem {
 
     @Column(nullable = false)
     private boolean available;
+
+    @Column
+    private Integer quantity; // null means unlimited
 }

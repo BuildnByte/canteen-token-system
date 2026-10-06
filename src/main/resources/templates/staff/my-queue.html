@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Queue — Canteen Staff</title>
+    <meta name="description" content="Your personally accepted and in-progress orders.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <style>
+        .my-order-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+            transition: all var(--transition);
+        }
+        .my-order-card:hover { box-shadow: var(--shadow-md); }
+        .my-order-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+            flex-wrap: wrap;
+        }
+        .my-order-num {
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            font-weight: 800;
+            padding: 0.3rem 0.7rem;
+            border-radius: var(--radius);
+            font-size: 0.9rem;
+        }
+        .my-order-student { font-weight: 700; font-size: 0.95rem; }
+        .my-order-items {
+            font-size: 0.88rem;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+            line-height: 1.6;
+        }
+        .status-buttons {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .status-btn {
+            padding: 0.38rem 0.85rem;
+            border-radius: var(--radius-full);
+            font-size: 0.82rem;
+            font-weight: 700;
+            border: 1.5px solid;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all var(--transition);
+        }
+        .status-btn.active { transform: scale(1.05); box-shadow: var(--shadow-md); }
+        .status-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+        .sbt-pending   { background:var(--pending-bg);   color:var(--pending-text);   border-color:var(--pending-border);   }
+        .sbt-preparing { background:var(--preparing-bg); color:var(--preparing-text); border-color:var(--preparing-border); }
+        .sbt-ready     { background:var(--ready-bg);     color:var(--ready-text);     border-color:var(--ready-border);     }
+        .sbt-collected { background:var(--collected-bg); color:var(--collected-text); border-color:var(--collected-border); }
+        .sbt-pending.active   { background:var(--pending-text);   color:white; }
+        .sbt-preparing.active { background:var(--preparing-text); color:white; }
+        .sbt-ready.active     { background:var(--ready-text);     color:white; }
+        .sbt-collected.active { background:var(--collected-text); color:white; }
+    </style>
+</head>
+<body>
+
+<nav class="nav">
+    <a href="/" class="nav-brand"><span class="icon">🍽️</span> Canteen</a>
+    <div class="nav-links" id="nav-links-dynamic"></div>
+    <div class="nav-actions" id="nav-actions"></div>
+</nav>
+
+<div class="page">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">🍳 My Queue</h1>
+            <p class="page-subtitle">Orders you've accepted — tap a status button to update it</p>
+        </div>
+        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <span id="my-count" class="text-muted text-sm"></span>
+            <a href="/staff/queue" class="btn btn-outline btn-sm">+ Accept New</a>
+            <button onclick="loadMyQueue()" class="btn btn-ghost btn-sm" id="refresh-btn">↻</button>
+        </div>
+    </div>
+
+    <div id="my-queue-container">
+        <div class="empty-state"><p>Loading your queue…</p></div>
+    </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script th:src="@{/js/nav.js}"></script>
+<script>
+    AUTH.initNav('myq');
+    AUTH.requireRole('STAFF', 'ADMIN');
+
+    const STATUS_ORDER = ['PENDING', 'PREPARING', 'READY', 'COLLECTED'];
+    const STATUS_META  = {
+        PENDING:   { icon: '🕐', label: 'Pending',    cls: 'sbt-pending'   },
+        PREPARING: { icon: '👨‍🍳', label: 'Preparing',  cls: 'sbt-preparing' },
+        READY:     { icon: '✅', label: 'Ready',      cls: 'sbt-ready'     },
+        COLLECTED: { icon: '📦', label: 'Collected',  cls: 'sbt-collected' }
+    };
+
+    async function loadMyQueue() {
+        document.getElementById('refresh-btn').textContent = '⏳';
+        try {
+            const res = await fetch('/api/tokens/my-queue', { headers: AUTH.headers() });
+            if (res.status === 401 || res.status === 403) { window.location.href = '/login'; return; }
+            const orders = await res.json();
+            renderMyQueue(orders);
+        } catch(e) {
+            document.getElementById('my-queue-container').innerHTML =
+                '<div class="empty-state"><span class="empty-icon">⚠️</span><p>Failed to load.</p></div>';
+        } finally {
+            document.getElementById('refresh-btn').textContent = '↻';
+        }
+    }
+
+    function renderMyQueue(orders) {
+        const container = document.getElementById('my-queue-container');
+        const countEl   = document.getElementById('my-count');
+        countEl.textContent = `${orders.length} active order${orders.length !== 1 ? 's' : ''}`;
+
+        if (!orders || orders.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <span class="empty-icon">🍽️</span>
+                    <h3>Your queue is empty</h3>
+                    <p>Head to <a href="/staff/queue" style="color:var(--primary);font-weight:600;">New Orders</a> to accept an order and start preparing.</p>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = orders.map(order => {
+            let items = [];
+            try { items = JSON.parse(order.items); } catch(e) {}
+            const itemLines = items.map(i => `
+                <div style="display:flex; justify-content:space-between; padding:0.2rem 0; border-bottom:1px solid var(--border);">
+                    <span>${i.name} <strong>×${i.qty}</strong></span>
+                    ${i.price ? `<span class="text-muted">₹${(i.price * i.qty).toFixed(2)}</span>` : ''}
+                </div>`).join('');
+            const total    = items.reduce((s, i) => s + ((i.price || 0) * i.qty), 0);
+            const dt       = new Date(order.createdAt);
+            const timeStr  = dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+            const btns = STATUS_ORDER.map(st => {
+                const m = STATUS_META[st];
+                const active = order.status === st ? ' active' : '';
+                return `<button
+                    class="status-btn ${m.cls}${active}"
+                    id="sbtn-${order.id}-${st}"
+                    onclick="setStatus(${order.id}, '${st}', this)"
+                    ${order.status === st ? '' : ''}>
+                    ${m.icon} ${m.label}
+                </button>`;
+            }).join('');
+
+            return `
+                <div class="my-order-card" id="ocard-${order.id}">
+                    <div class="my-order-header">
+                        <span class="my-order-num">#${order.id}</span>
+                        <span class="my-order-student">👤 ${order.studentName}</span>
+                        <span class="badge badge-${order.status}" style="margin-left:auto;">${STATUS_META[order.status]?.icon} ${order.status}</span>
+                        <span class="text-xs text-muted">${timeStr}</span>
+                    </div>
+                    <div class="my-order-items">${itemLines}${total > 0 ? `<div style="display:flex;justify-content:space-between;padding-top:0.4rem;"><strong>Total</strong><strong style="color:var(--primary-dark);">₹${total.toFixed(2)}</strong></div>` : ''}</div>
+                    <div class="status-buttons">${btns}</div>
+                </div>`;
+        }).join('');
+    }
+
+    async function setStatus(tokenId, newStatus, clickedBtn) {
+        // Disable all buttons for this card during request
+        document.querySelectorAll(`[id^="sbtn-${tokenId}-"]`).forEach(b => b.disabled = true);
+
+        try {
+            const res = await fetch(`/api/tokens/${tokenId}/status`, {
+                method: 'PUT',
+                headers: AUTH.headers(),
+                body: JSON.stringify({ status: newStatus })
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                showToast(`Token #${tokenId} → ${newStatus}`, 'success');
+
+                if (newStatus === 'COLLECTED') {
+                    // Remove from list after a short delay
+                    showToast(`Token #${tokenId} collected ✅ — removed from your queue.`, 'success');
+                    setTimeout(() => {
+                        document.getElementById('ocard-' + tokenId)?.remove();
+                        const remaining = document.querySelectorAll('[id^="ocard-"]').length;
+                        document.getElementById('my-count').textContent =
+                            `${remaining} active order${remaining !== 1 ? 's' : ''}`;
+                        if (remaining === 0) loadMyQueue();
+                    }, 1000);
+                } else {
+                    // Update badge and button active state visually
+                    const card = document.getElementById('ocard-' + tokenId);
+                    if (card) {
+                        const badge = card.querySelector('.badge');
+                        if (badge) {
+                            const m = STATUS_META[newStatus];
+                            badge.className = `badge badge-${newStatus}`;
+                            badge.textContent = `${m.icon} ${newStatus}`;
+                        }
+                        // Re-enable buttons and update active class
+                        STATUS_ORDER.forEach(st => {
+                            const b = document.getElementById(`sbtn-${tokenId}-${st}`);
+                            if (b) {
+                                b.disabled = false;
+                                b.classList.toggle('active', st === newStatus);
+                            }
+                        });
+                    }
+                }
+            } else {
+                showToast(data.message || 'Failed to update status.', 'error');
+                document.querySelectorAll(`[id^="sbtn-${tokenId}-"]`).forEach(b => b.disabled = false);
+            }
+        } catch(e) {
+            showToast('Connection error.', 'error');
+            document.querySelectorAll(`[id^="sbtn-${tokenId}-"]`).forEach(b => b.disabled = false);
+        }
+    }
+
+    loadMyQueue();
+    setInterval(loadMyQueue, 30000);
+</script>
+</body>
+</html>

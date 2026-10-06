@@ -1,43 +1,121 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>College Canteen Token System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>College Canteen Token System — Skip the line, order ahead</title>
+    <meta name="description" content="Place orders, track tokens, and manage the college canteen efficiently.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <nav>
-        <a class="brand" href="/">🍽️ Canteen Token System</a>
-        <div class="links">
-            <a href="/menu">Menu</a>
-            <a href="/queue">Staff Queue</a>
-            <a href="/dashboard">Dashboard</a>
-        </div>
-    </nav>
-    <main>
-        <div class="hero">
-            <h1>Skip the line. Order ahead.</h1>
-            <p>Browse today's menu, place your order, and track it in real time.</p>
-            <a class="btn" href="/menu">View Menu →</a>
-        </div>
 
-        <div class="card-grid">
-            <div class="card">
-                <h3>🧾 For Students</h3>
-                <p>Order from the menu and get a token — no more standing in line.</p>
-                <a href="/menu">Order now</a>
-            </div>
-            <div class="card">
-                <h3>👨‍🍳 For Staff</h3>
-                <p>See the live order queue and update status as you prepare food.</p>
-                <a href="/queue">View queue</a>
-            </div>
-            <div class="card">
-                <h3>📊 For Admins</h3>
-                <p>Track daily order volume and status breakdown at a glance.</p>
-                <a href="/dashboard">View dashboard</a>
+<!-- NAV -->
+<nav class="nav">
+    <a href="/" class="nav-brand">
+        <span class="icon">🍽️</span>
+        Canteen
+    </a>
+    <div class="nav-links">
+        <a href="/menu">Menu</a>
+        <a href="/student/orders" th:if="${userRole == 'STUDENT' or userRole == 'STAFF' or userRole == 'ADMIN'}">My Orders</a>
+        <a href="/staff/queue"   th:if="${userRole == 'STAFF' or userRole == 'ADMIN'}">Queue</a>
+        <a href="/admin/menu"    th:if="${userRole == 'ADMIN'}">Manage Menu</a>
+        <a href="/dashboard"     th:if="${userRole == 'ADMIN'}">Dashboard</a>
+    </div>
+    <div class="nav-actions" id="nav-actions">
+        <!-- Filled by JS -->
+    </div>
+</nav>
+
+<!-- HERO -->
+<div class="page">
+    <div class="hero">
+        <div class="hero-content">
+            <h1>Skip the line.<br>Order ahead.</h1>
+            <p>Browse today's menu, place your order in seconds, and collect when it's ready.</p>
+            <div style="display:flex; gap:0.75rem; justify-content:center; flex-wrap:wrap;">
+                <a href="/menu" class="btn btn-white btn-lg">View Today's Menu →</a>
+                <a href="/register" id="hero-register-btn" class="btn btn-outline btn-lg" style="border-color:rgba(255,255,255,0.6); color:white;">Create Account</a>
             </div>
         </div>
-    </main>
+    </div>
+
+    <!-- FEATURE CARDS -->
+    <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
+        <div class="feature-card">
+            <span class="feature-icon">🎓</span>
+            <h3>For Students</h3>
+            <p>Browse the menu, add items to cart, and place orders — no more standing in long queues.</p>
+            <a href="/menu" class="btn btn-primary">Order Now</a>
+        </div>
+        <div class="feature-card">
+            <span class="feature-icon">👨‍🍳</span>
+            <h3>For Staff</h3>
+            <p>See the live order queue and update status as you prepare and serve food in real time.</p>
+            <a href="/staff/queue" class="btn btn-outline">View Queue</a>
+        </div>
+        <div class="feature-card">
+            <span class="feature-icon">📊</span>
+            <h3>For Admins</h3>
+            <p>Manage the daily menu, track order volume, and view status breakdowns on the dashboard.</p>
+            <a href="/dashboard" class="btn btn-ghost">Open Dashboard</a>
+        </div>
+    </div>
+
+    <!-- HOW IT WORKS -->
+    <div style="margin-top:3rem; text-align:center;">
+        <h2 style="font-size:1.4rem; font-weight:800; margin-bottom:0.5rem; letter-spacing:-0.02em;">How it works</h2>
+        <p class="text-muted mb-2">Three simple steps</p>
+        <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-top:1.5rem;">
+            <div class="card" style="text-align:center;">
+                <div style="font-size:2rem; margin-bottom:0.5rem;">1️⃣</div>
+                <div class="card-title mb-1">Browse Menu</div>
+                <p class="text-sm text-muted">See what's available today and add items to your cart.</p>
+            </div>
+            <div class="card" style="text-align:center;">
+                <div style="font-size:2rem; margin-bottom:0.5rem;">2️⃣</div>
+                <div class="card-title mb-1">Get a Token</div>
+                <p class="text-sm text-muted">Submit your order and receive a token number instantly.</p>
+            </div>
+            <div class="card" style="text-align:center;">
+                <div style="font-size:2rem; margin-bottom:0.5rem;">3️⃣</div>
+                <div class="card-title mb-1">Collect Food</div>
+                <p class="text-sm text-muted">Head to the counter when your token status shows "Ready".</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Inject nav actions based on localStorage
+    const token = localStorage.getItem('jwt_token');
+    const role  = localStorage.getItem('user_role');
+    const name  = localStorage.getItem('user_name') || localStorage.getItem('user_email') || '';
+    const actionsEl = document.getElementById('nav-actions');
+    const heroBtnEl = document.getElementById('hero-register-btn');
+
+    if (token) {
+        actionsEl.innerHTML = `
+            <div class="nav-user">
+                <span>${name.split('@')[0]}</span>
+                <span class="role-badge role-${role}">${role}</span>
+            </div>
+            <button onclick="logout()" class="btn btn-ghost btn-sm">Sign out</button>
+        `;
+        if (heroBtnEl) heroBtnEl.style.display = 'none';
+    } else {
+        actionsEl.innerHTML = `
+            <a href="/login"    class="btn btn-ghost btn-sm">Sign in</a>
+            <a href="/register" class="btn btn-primary btn-sm">Sign up</a>
+        `;
+    }
+
+    function logout() {
+        localStorage.clear();
+        document.cookie = 'JWT_TOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;';
+        window.location.href = '/login';
+    }
+</script>
 </body>
 </html>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Orders — Canteen Staff</title>
+    <meta name="description" content="Global queue of new orders waiting to be accepted by staff.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <style>
+        .accept-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            transition: all var(--transition);
+        }
+        .accept-card:hover { box-shadow: var(--shadow-md); border-color: var(--primary); }
+        .token-num {
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            font-weight: 800;
+            font-size: 1rem;
+            min-width: 52px;
+            height: 52px;
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            text-align: center;
+        }
+        .token-info { flex: 1; min-width: 0; }
+        .token-student { font-weight: 700; font-size: 0.95rem; }
+        .token-items   { font-size: 0.85rem; color: var(--text-muted); margin-top: 0.2rem; line-height: 1.5; }
+        .token-time    { font-size: 0.78rem; color: var(--text-subtle); margin-top: 0.15rem; }
+        .token-total   { font-weight: 700; color: var(--primary-dark); font-size: 0.9rem; margin-top: 0.2rem; }
+    </style>
+</head>
+<body>
+
+<nav class="nav">
+    <a href="/" class="nav-brand"><span class="icon">🍽️</span> Canteen</a>
+    <div class="nav-links" id="nav-links-dynamic"></div>
+    <div class="nav-actions" id="nav-actions"></div>
+</nav>
+
+<div class="page">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">📋 New Orders</h1>
+            <p class="page-subtitle">Unaccepted orders waiting for a staff member — accept one to start preparing</p>
+        </div>
+        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <span id="queue-count" class="badge badge-PENDING" style="font-size:0.88rem; padding:0.4rem 0.8rem;"></span>
+            <button onclick="loadQueue()" class="btn btn-outline btn-sm" id="refresh-btn">↻ Refresh</button>
+        </div>
+    </div>
+
+    <div id="queue-container">
+        <div class="empty-state"><p>Loading orders…</p></div>
+    </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script th:src="@{/js/nav.js}"></script>
+<script>
+    AUTH.initNav('global');
+    AUTH.requireRole('STAFF', 'ADMIN');
+
+    async function loadQueue() {
+        const btn = document.getElementById('refresh-btn');
+        btn.textContent = '⏳';
+        try {
+            const res = await fetch('/api/tokens/unaccepted', { headers: AUTH.headers() });
+            if (res.status === 401 || res.status === 403) { window.location.href = '/login'; return; }
+            const orders = await res.json();
+            renderQueue(orders);
+        } catch(e) {
+            document.getElementById('queue-container').innerHTML =
+                '<div class="empty-state"><span class="empty-icon">⚠️</span><p>Failed to load orders.</p></div>';
+        } finally {
+            btn.textContent = '↻ Refresh';
+        }
+    }
+
+    function renderQueue(orders) {
+        const container = document.getElementById('queue-container');
+        const countEl   = document.getElementById('queue-count');
+
+        countEl.textContent = `${orders.length} waiting`;
+
+        if (!orders || orders.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <span class="empty-icon">✨</span>
+                    <h3>All clear — no new orders!</h3>
+                    <p>When students place orders, they will appear here. Check your <a href="/staff/my-queue" style="color:var(--primary);font-weight:600;">My Queue</a> for active orders.</p>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = orders.map(order => {
+            let items = [];
+            try { items = JSON.parse(order.items); } catch(e) {}
+            const itemLines = items.map(i => `${i.name} ×${i.qty}`).join(' · ');
+            const total     = items.reduce((s, i) => s + (i.price * i.qty), 0);
+            const dt        = new Date(order.createdAt);
+            const timeStr   = dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+            const dateStr   = dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+            const waiting   = Math.floor((Date.now() - dt.getTime()) / 60000);
+
+            return `
+                <div class="accept-card" id="card-${order.id}">
+                    <div class="token-num">#${order.id}</div>
+                    <div class="token-info">
+                        <div class="token-student">👤 ${order.studentName || 'Student'}</div>
+                        <div class="token-items">${itemLines}</div>
+                        ${total > 0 ? `<div class="token-total">₹${total.toFixed(2)}</div>` : ''}
+                        <div class="token-time">Placed: ${dateStr} at ${timeStr} · Waiting: ${waiting}m</div>
+                    </div>
+                    <button onclick="acceptOrder(${order.id})" id="accept-btn-${order.id}"
+                            class="btn btn-success btn-sm" style="flex-shrink:0;">
+                        ✅ Accept
+                    </button>
+                </div>`;
+        }).join('');
+    }
+
+    async function acceptOrder(tokenId) {
+        const btn = document.getElementById('accept-btn-' + tokenId);
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>';
+
+        try {
+            const res = await fetch(`/api/tokens/${tokenId}/accept`, {
+                method: 'POST',
+                headers: AUTH.headers()
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                showToast(`Token #${tokenId} accepted! Go to My Queue to manage it.`, 'success');
+                document.getElementById('card-' + tokenId)?.remove();
+                // Update count
+                const remaining = document.querySelectorAll('[id^="card-"]').length;
+                document.getElementById('queue-count').textContent = `${remaining} waiting`;
+            } else {
+                showToast(data.message || 'Failed to accept order.', 'error');
+                btn.disabled = false;
+                btn.textContent = '✅ Accept';
+            }
+        } catch(e) {
+            showToast('Connection error.', 'error');
+            btn.disabled = false;
+            btn.textContent = '✅ Accept';
+        }
+    }
+
+    loadQueue();
+    setInterval(loadQueue, 20000); // refresh every 20s
+</script>
+</body>
+</html>

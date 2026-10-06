@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard — Canteen Token System</title>
+    <meta name="description" content="Live overview of canteen orders and staff performance.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <style>
+        .staff-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            transition: all var(--transition);
+        }
+        .staff-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+        .staff-avatar {
+            width: 44px; height: 44px;
+            border-radius: var(--radius-full);
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.2rem; font-weight: 800; flex-shrink: 0;
+        }
+        .staff-info { flex: 1; min-width: 0; }
+        .staff-name { font-weight: 700; font-size: 0.95rem; }
+        .staff-role { font-size: 0.78rem; color: var(--text-muted); }
+        .staff-stats { display: flex; gap: 1rem; text-align: center; }
+        .staff-stat-num   { font-size: 1.3rem; font-weight: 800; color: var(--primary); line-height: 1; }
+        .staff-stat-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+
+        .progress-bar {
+            height: 6px;
+            background: var(--border);
+            border-radius: var(--radius-full);
+            overflow: hidden;
+            margin-top: 0.4rem;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: var(--radius-full);
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+        }
+    </style>
+</head>
+<body>
+
+<nav class="nav">
+    <a href="/" class="nav-brand"><span class="icon">🍽️</span> Canteen</a>
+    <div class="nav-links" id="nav-links-dynamic"></div>
+    <div class="nav-actions" id="nav-actions"></div>
+</nav>
+
+<div class="page">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">📊 Admin Dashboard</h1>
+            <p class="page-subtitle" id="dash-time">Live snapshot — updates every 30 seconds</p>
+        </div>
+        <button onclick="loadDashboard()" class="btn btn-outline btn-sm" id="refresh-btn">↻ Refresh</button>
+    </div>
+
+    <!-- ── Overview Stats ── -->
+    <div class="stat-grid" id="stat-grid">
+        <div class="stat-card"><div class="stat-num">—</div><div class="stat-label">Orders Today</div></div>
+        <div class="stat-card"><div class="stat-num" style="color:var(--pending-text)">—</div><div class="stat-label">Pending</div></div>
+        <div class="stat-card"><div class="stat-num" style="color:var(--preparing-text)">—</div><div class="stat-label">Preparing</div></div>
+        <div class="stat-card"><div class="stat-num" style="color:var(--ready-text)">—</div><div class="stat-label">Ready</div></div>
+        <div class="stat-card"><div class="stat-num" style="color:var(--collected-text)">—</div><div class="stat-label">Collected</div></div>
+        <div class="stat-card"><div class="stat-num" style="color:var(--danger)">—</div><div class="stat-label">Unaccepted</div></div>
+    </div>
+
+    <!-- ── Quick Actions ── -->
+    <div class="section-header mt-3">
+        <span class="section-title">Quick Actions</span>
+    </div>
+    <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom:2rem;">
+        <a href="/admin/menu" class="card" style="text-decoration:none; display:flex; gap:1rem; align-items:center;">
+            <span style="font-size:2rem;">🍽️</span>
+            <div>
+                <div class="card-title">Menu Management</div>
+                <p class="text-sm text-muted">Add, edit, toggle daily items</p>
+            </div>
+        </a>
+        <a href="/admin/orders" class="card" style="text-decoration:none; display:flex; gap:1rem; align-items:center;">
+            <span style="font-size:2rem;">📋</span>
+            <div>
+                <div class="card-title">All Orders</div>
+                <p class="text-sm text-muted">View complete order list</p>
+            </div>
+        </a>
+        <a href="/staff/queue" class="card" style="text-decoration:none; display:flex; gap:1rem; align-items:center;">
+            <span style="font-size:2rem;">👁️</span>
+            <div>
+                <div class="card-title">Live Queue</div>
+                <p class="text-sm text-muted">View unaccepted orders</p>
+            </div>
+        </a>
+        <a href="/admin/users" class="card" style="text-decoration:none; display:flex; gap:1rem; align-items:center;">
+            <span style="font-size:2rem;">👥</span>
+            <div>
+                <div class="card-title">User Management</div>
+                <p class="text-sm text-muted">Manage staff & student roles</p>
+            </div>
+        </a>
+    </div>
+
+    <!-- ── Staff Performance ── -->
+    <div class="section-header">
+        <span class="section-title">👨‍🍳 Staff Performance</span>
+        <span class="text-sm text-muted">All time</span>
+    </div>
+    <div id="staff-grid" class="card-grid" style="grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); margin-bottom:2rem;">
+        <div class="empty-state" style="padding:2rem;"><p>Loading staff data…</p></div>
+    </div>
+
+    <!-- ── Recent Orders ── -->
+    <div class="section-header">
+        <span class="section-title">Recent Active Orders</span>
+        <a href="/admin/orders" class="btn btn-ghost btn-sm">View all →</a>
+    </div>
+    <div id="recent-orders"></div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script th:src="@{/js/nav.js}"></script>
+<script>
+    AUTH.initNav('dash');
+    AUTH.requireRole('ADMIN');
+
+    const STATUS_COLORS = {
+        PENDING: 'var(--pending-text)', PREPARING: 'var(--preparing-text)',
+        READY: 'var(--ready-text)', COLLECTED: 'var(--collected-text)'
+    };
+
+    async function loadDashboard() {
+        const btn = document.getElementById('refresh-btn');
+        btn.textContent = '⏳';
+        try {
+            const res = await fetch('/api/dashboard/summary', { headers: AUTH.headers() });
+            if (res.status === 401 || res.status === 403) { window.location.href = '/login'; return; }
+            const data = await res.json();
+            renderStats(data);
+            renderStaff(data.staffPerformance || []);
+
+            // Load recent orders separately
+            const qRes = await fetch('/api/tokens/queue', { headers: AUTH.headers() });
+            const orders = await qRes.json();
+            renderRecentOrders((orders || []).slice(0, 5));
+
+            const now = new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+            document.getElementById('dash-time').textContent = `Last updated: ${now}`;
+        } catch(e) {
+            showToast('Failed to refresh dashboard.', 'error');
+        } finally {
+            btn.textContent = '↻ Refresh';
+        }
+    }
+
+    function renderStats(data) {
+        const bd = data.statusBreakdown || {};
+        document.getElementById('stat-grid').innerHTML = `
+            <div class="stat-card">
+                <div class="stat-num">${data.totalOrdersToday || 0}</div>
+                <div class="stat-label">Orders Today</div>
+            </div>
+            ${['PENDING','PREPARING','READY','COLLECTED'].map(st => `
+            <div class="stat-card">
+                <div class="stat-num" style="color:${STATUS_COLORS[st]}">${bd[st] || 0}</div>
+                <div class="stat-label">${st}</div>
+            </div>`).join('')}
+            <div class="stat-card">
+                <div class="stat-num" style="color:var(--danger)">${data.unacceptedCount || 0}</div>
+                <div class="stat-label">Unaccepted</div>
+            </div>
+        `;
+    }
+
+    function renderStaff(staffList) {
+        const grid = document.getElementById('staff-grid');
+        if (!staffList || staffList.length === 0) {
+            grid.innerHTML = `
+                <div class="empty-state" style="padding:2rem; grid-column:1/-1;">
+                    <span class="empty-icon">👨‍🍳</span>
+                    <h3>No staff activity yet</h3>
+                    <p>Staff performance appears here once they start accepting orders.</p>
+                </div>`;
+            return;
+        }
+
+        const maxAccepted = Math.max(...staffList.map(s => s.totalAccepted), 1);
+
+        grid.innerHTML = staffList.map(s => {
+            const initials = s.staffName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+            const rate = s.totalAccepted > 0 ? Math.round((s.totalCompleted / s.totalAccepted) * 100) : 0;
+            const barWidth = Math.round((s.totalAccepted / maxAccepted) * 100);
+
+            return `
+                <div class="staff-card">
+                    <div class="staff-avatar">${initials}</div>
+                    <div class="staff-info" style="flex:1;">
+                        <div class="staff-name">${s.staffName}</div>
+                        <div class="staff-role">Canteen Staff</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width:${barWidth}%"></div>
+                        </div>
+                    </div>
+                    <div class="staff-stats">
+                        <div>
+                            <div class="staff-stat-num">${s.totalAccepted}</div>
+                            <div class="staff-stat-label">Accepted</div>
+                        </div>
+                        <div>
+                            <div class="staff-stat-num" style="color:var(--success)">${s.totalCompleted}</div>
+                            <div class="staff-stat-label">Completed</div>
+                        </div>
+                        <div>
+                            <div class="staff-stat-num" style="color:var(--accent)">${rate}%</div>
+                            <div class="staff-stat-label">Rate</div>
+                        </div>
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    function renderRecentOrders(orders) {
+        const el = document.getElementById('recent-orders');
+        if (!orders || orders.length === 0) {
+            el.innerHTML = '<div class="empty-state" style="padding:1.5rem;"><p>No active orders.</p></div>';
+            return;
+        }
+        el.innerHTML = `
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr><th>Token</th><th>Student</th><th>Items</th><th>Status</th><th>Accepted By</th></tr>
+                    </thead>
+                    <tbody>
+                        ${orders.map(t => {
+                            let items = [];
+                            try { items = JSON.parse(t.items); } catch(e) {}
+                            const summary = items.map(i => `${i.name} ×${i.qty}`).join(', ');
+                            return `
+                                <tr>
+                                    <td><strong>#${t.id}</strong></td>
+                                    <td>${t.studentName || '—'}</td>
+                                    <td class="text-sm text-muted">${summary || '—'}</td>
+                                    <td><span class="badge badge-${t.status}">${t.status}</span></td>
+                                    <td class="text-sm">${t.acceptedByStaffName || '<span class="text-muted">Unaccepted</span>'}</td>
+                                </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>`;
+    }
+
+    loadDashboard();
+    setInterval(loadDashboard, 30000);
+</script>
+</body>
+</html>

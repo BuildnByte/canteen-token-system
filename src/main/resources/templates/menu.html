@@ -1,36 +1,292 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Menu - Canteen Token System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Today's Menu — Canteen Token System</title>
+    <meta name="description" content="Browse today's canteen menu and place your order.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <nav>
-        <a class="brand" href="/">🍽️ Canteen Token System</a>
-        <div class="links">
-            <a href="/menu">Menu</a>
-            <a href="/queue">Staff Queue</a>
-            <a href="/dashboard">Dashboard</a>
-        </div>
-    </nav>
-    <main>
-        <h1 class="page-title">Today's Menu</h1>
 
-        <div th:if="${menuItems == null or menuItems.isEmpty()}" class="empty-state">
-            <p>No menu items yet. Ask an admin to add some via <code>POST /api/menu</code>.</p>
-        </div>
+<nav class="nav">
+    <a href="/" class="nav-brand"><span class="icon">🍽️</span> Canteen</a>
+    <div class="nav-links" id="nav-links-dynamic"></div>
+    <div class="nav-actions" id="nav-actions"></div>
+</nav>
 
-        <div class="card-grid" th:unless="${menuItems == null or menuItems.isEmpty()}">
-            <div class="card" th:each="item : ${menuItems}">
-                <h3 th:text="${item.name}">Item name</h3>
-                <p class="price" th:text="'₹' + ${item.price}">₹0.00</p>
-                <p th:if="${!item.available}" class="unavailable">Currently unavailable</p>
-                <form th:if="${item.available}" action="#">
-                    <button type="button" class="btn btn-primary" disabled title="Order flow coming soon">Add to order</button>
-                </form>
+<div class="page">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Today's Menu</h1>
+            <p class="page-subtitle" id="menu-subtitle">Browse items and add to cart</p>
+        </div>
+        <div id="cart-summary-bar" style="display:none; align-items:center; gap:0.75rem;">
+            <span id="cart-summary-text" class="text-muted text-sm"></span>
+            <button onclick="openCart()" class="btn btn-primary">🛒 View Cart</button>
+        </div>
+    </div>
+
+    <!-- Empty state -->
+    <div th:if="${menuItems == null or menuItems.isEmpty()}" class="empty-state">
+        <span class="empty-icon">🍽️</span>
+        <h3>No items on today's menu yet</h3>
+        <p>Check back later — an admin will add items soon.</p>
+    </div>
+
+    <!-- Menu Grid — use data-* attributes instead of th:onclick to satisfy Thymeleaf security -->
+    <div class="card-grid" th:unless="${menuItems == null or menuItems.isEmpty()}" id="menu-grid">
+        <div class="menu-card" th:each="item : ${menuItems}">
+            <div class="menu-card-body">
+                <div class="menu-card-name"  th:text="${item.name}">Item</div>
+                <div class="menu-card-price" th:text="'₹' + ${#numbers.formatDecimal(item.price,1,2)}">₹0.00</div>
+                <div class="text-xs text-muted" th:if="${item.quantity != null}" th:text="${item.quantity} + ' remaining'">0 remaining</div>
+            </div>
+            <div class="menu-card-footer">
+                <!-- Qty control (hidden until item is added) -->
+                <div class="qty-control"
+                     th:id="'qty-ctrl-' + ${item.id}"
+                     th:attr="data-id=${item.id}"
+                     style="display:none;">
+                    <button class="qty-btn menu-qty-minus" th:attr="data-id=${item.id}" type="button">−</button>
+                    <span class="qty-num" th:id="'qty-' + ${item.id}">0</span>
+                    <button class="qty-btn menu-qty-plus"  th:attr="data-id=${item.id}" type="button">+</button>
+                </div>
+                <!-- Add button — data-* holds all needed values -->
+                <button type="button"
+                        class="btn btn-primary btn-sm menu-add-btn"
+                        th:id="'add-btn-' + ${item.id}"
+                        th:attr="data-id=${item.id}, data-name=${item.name}, data-price=${item.price}, data-qty=${item.quantity == null ? -1 : item.quantity}"
+                        th:disabled="${item.quantity != null and item.quantity == 0}">
+                    <span th:if="${item.quantity != null and item.quantity == 0}">Sold Out</span>
+                    <span th:unless="${item.quantity != null and item.quantity == 0}">+ Add</span>
+                </button>
             </div>
         </div>
-    </main>
+    </div>
+</div>
+
+<!-- Cart Slide Panel -->
+<div class="cart-panel" id="cart-panel">
+    <div class="cart-panel-header">
+        <span class="cart-panel-title">🛒 Your Cart</span>
+        <button onclick="closeCart()" class="btn btn-ghost btn-sm">✕ Close</button>
+    </div>
+    <div class="cart-items-list" id="cart-items-list">
+        <div class="empty-state" style="padding:2rem 1rem;">
+            <span class="empty-icon" style="font-size:2rem;">🛒</span>
+            <p>Your cart is empty</p>
+        </div>
+    </div>
+    <div class="cart-footer" id="cart-footer" style="display:none;">
+        <div class="cart-total">
+            <span>Total</span>
+            <span id="cart-total">₹0</span>
+        </div>
+        <button onclick="placeOrder()" id="place-order-btn" class="btn btn-primary btn-full btn-lg">
+            Place Order
+        </button>
+    </div>
+</div>
+<div class="cart-overlay" id="cart-overlay" onclick="closeCart()"></div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script th:src="@{/js/nav.js}"></script>
+<script>
+    AUTH.initNav('menu');
+
+    // Show subtitle based on role
+    const role = AUTH.role();
+    if (role === 'ADMIN') {
+        document.getElementById('menu-subtitle').textContent = 'View-only — go to Menu Management to edit items';
+    } else if (role === 'STAFF') {
+        document.getElementById('menu-subtitle').textContent = 'You can also place an order if needed';
+    }
+
+    // ── Cart State ───────────────────────────────────────────────────────────
+    const cart = {}; // { itemId: { name, price, qty } }
+
+    // ── Wire up event listeners (no th:onclick needed) ──────────────────────
+    document.addEventListener('click', function(e) {
+        // + Add button
+        const addBtn = e.target.closest('.menu-add-btn');
+        if (addBtn) {
+            const id    = addBtn.dataset.id;
+            const name  = addBtn.dataset.name;
+            const price = parseFloat(addBtn.dataset.price);
+            const maxQty= parseInt(addBtn.dataset.qty);
+            addToCart(id, name, price, maxQty);
+            return;
+        }
+
+        // Minus button
+        const minusBtn = e.target.closest('.menu-qty-minus');
+        if (minusBtn) {
+            changeQty(minusBtn.dataset.id, -1);
+            return;
+        }
+
+        // Plus button
+        const plusBtn = e.target.closest('.menu-qty-plus');
+        if (plusBtn) {
+            changeQty(plusBtn.dataset.id, 1);
+        }
+    });
+
+    function addToCart(id, name, price, maxQty) {
+        if (!AUTH.token()) { window.location.href = '/login'; return; }
+        if (AUTH.role() === 'ADMIN') {
+            showToast('Admins cannot place orders. Use Menu Management to edit items.', 'error');
+            return;
+        }
+        
+        let currentQty = cart[id] ? cart[id].qty : 0;
+        if (maxQty !== -1 && currentQty >= maxQty) {
+            showToast('Cannot add more ' + name + ' (limit reached)', 'error');
+            return;
+        }
+        
+        if (cart[id]) {
+            cart[id].qty++;
+        } else {
+            cart[id] = { name, price, qty: 1, maxQty };
+        }
+        updateQtyUI(id);
+        renderCart();
+        showToast(name + ' added to cart', 'success');
+    }
+
+    function changeQty(id, delta) {
+        if (!cart[id]) return;
+        
+        const newQty = cart[id].qty + delta;
+        if (delta > 0 && cart[id].maxQty !== -1 && newQty > cart[id].maxQty) {
+            showToast('Cannot add more ' + cart[id].name + ' (limit reached)', 'error');
+            return;
+        }
+        
+        cart[id].qty = newQty;
+        if (cart[id].qty <= 0) {
+            delete cart[id];
+            document.getElementById('qty-ctrl-' + id).style.display = 'none';
+            document.getElementById('add-btn-'  + id).style.display = 'inline-flex';
+        } else {
+            updateQtyUI(id);
+        }
+        renderCart();
+    }
+
+    function updateQtyUI(id) {
+        const qty = cart[id] ? cart[id].qty : 0;
+        if (qty > 0) {
+            document.getElementById('qty-ctrl-' + id).style.display = 'flex';
+            document.getElementById('add-btn-'  + id).style.display = 'none';
+            document.getElementById('qty-'      + id).textContent   = qty;
+        }
+    }
+
+    function renderCart() {
+        const items    = Object.entries(cart);
+        const listEl   = document.getElementById('cart-items-list');
+        const footerEl = document.getElementById('cart-footer');
+        const barEl    = document.getElementById('cart-summary-bar');
+        const totalEl  = document.getElementById('cart-total');
+        const textEl   = document.getElementById('cart-summary-text');
+
+        if (items.length === 0) {
+            listEl.innerHTML = `<div class="empty-state" style="padding:2rem 1rem;">
+                <span class="empty-icon" style="font-size:2rem;">🛒</span>
+                <p>Your cart is empty</p></div>`;
+            footerEl.style.display = 'none';
+            barEl.style.display    = 'none';
+            return;
+        }
+
+        let total = 0;
+        listEl.innerHTML = items.map(([id, item]) => {
+            const line = item.price * item.qty;
+            total += line;
+            return `<div class="cart-item-row">
+                <div>
+                    <div class="cart-item-name">${item.name}</div>
+                    <div class="text-xs text-muted">₹${item.price.toFixed(2)} × ${item.qty}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <div class="qty-control">
+                        <button class="qty-btn" onclick="changeQty('${id}',-1)" type="button">−</button>
+                        <span class="qty-num">${item.qty}</span>
+                        <button class="qty-btn" onclick="changeQty('${id}',1)"  type="button">+</button>
+                    </div>
+                    <span class="cart-item-price">₹${line.toFixed(2)}</span>
+                </div>
+            </div>`;
+        }).join('');
+
+        footerEl.style.display = 'block';
+        totalEl.textContent = '₹' + total.toFixed(2);
+        const count = items.reduce((s, [, i]) => s + i.qty, 0);
+        barEl.style.display = 'flex';
+        textEl.textContent  = `${count} item${count !== 1 ? 's' : ''} · ₹${total.toFixed(2)}`;
+    }
+
+    function openCart()  {
+        document.getElementById('cart-panel').classList.add('open');
+        document.getElementById('cart-overlay').classList.add('open');
+    }
+    function closeCart() {
+        document.getElementById('cart-panel').classList.remove('open');
+        document.getElementById('cart-overlay').classList.remove('open');
+    }
+
+    async function placeOrder() {
+        const items = Object.entries(cart);
+        if (items.length === 0) return;
+        const studentId = AUTH.id();
+        if (!studentId) { window.location.href = '/login'; return; }
+
+        const payload = items.map(([id, item]) => ({
+            menuItemId: parseInt(id), name: item.name, qty: item.qty, price: item.price
+        }));
+
+        const btn = document.getElementById('place-order-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Placing order…';
+
+        try {
+            const res = await fetch('/api/tokens', {
+                method: 'POST',
+                headers: AUTH.headers(),
+                body: JSON.stringify({ studentId: parseInt(studentId), items: JSON.stringify(payload) })
+            });
+
+            if (res.status === 401 || res.status === 403) { AUTH.logout(); return; }
+            const data = await res.json();
+
+            if (res.ok) {
+                closeCart();
+                showToast('Order placed! Token #' + data.id, 'success');
+                // Clear cart
+                Object.keys(cart).forEach(id => {
+                    delete cart[id];
+                    const ctrl = document.getElementById('qty-ctrl-' + id);
+                    const abtn = document.getElementById('add-btn-'  + id);
+                    if (ctrl) ctrl.style.display = 'none';
+                    if (abtn) abtn.style.display  = 'inline-flex';
+                });
+                renderCart();
+                setTimeout(() => window.location.href = '/student/orders', 1500);
+            } else {
+                showToast(data.message || 'Failed to place order.', 'error');
+            }
+        } catch (err) {
+            showToast('Connection error. Please try again.', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = 'Place Order';
+        }
+    }
+</script>
 </body>
 </html>

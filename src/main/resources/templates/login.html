@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — Canteen Token System</title>
+    <meta name="description" content="Sign in to the College Canteen Token System">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+<div class="auth-wrap">
+    <div class="auth-card">
+        <div class="auth-logo">
+            <span class="icon">🍽️</span>
+            <h1>Welcome back</h1>
+            <p>Sign in to your canteen account</p>
+        </div>
+
+        <!-- Error message area -->
+        <div id="error-msg" class="mb-2" style="display:none;
+            padding:0.75rem 1rem; background:var(--danger-bg); color:var(--danger);
+            border:1px solid hsl(4,86%,80%); border-radius:var(--radius); font-size:0.88rem; font-weight:500;">
+        </div>
+
+        <form id="login-form" novalidate>
+            <div class="form-group">
+                <label for="email">Email address</label>
+                <input id="email" type="email" class="form-control" placeholder="you@college.edu" required autocomplete="email">
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input id="password" type="password" class="form-control" placeholder="••••••••" required autocomplete="current-password">
+            </div>
+
+            <button type="submit" id="submit-btn" class="btn btn-primary btn-full btn-lg mt-2">
+                Sign in
+            </button>
+        </form>
+
+        <div class="auth-footer mt-2">
+            Don't have an account? <a href="/register">Create one</a>
+        </div>
+    </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+    document.getElementById('login-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('submit-btn');
+        const errEl = document.getElementById('error-msg');
+        errEl.style.display = 'none';
+
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+
+        if (!email || !password) {
+            showError('Please fill in all fields.');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Signing in…';
+
+        try {
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                showError(data.message || 'Invalid credentials. Please try again.');
+                return;
+            }
+
+            // Store token and user info
+            localStorage.setItem('jwt_token', data.token);
+            localStorage.setItem('user_role',  data.role);
+            localStorage.setItem('user_id',    data.userId);
+            localStorage.setItem('user_name',  data.name);
+            localStorage.setItem('user_email', data.email);
+
+            // Set JWT cookie for Thymeleaf pages
+            document.cookie = `JWT_TOKEN=${data.token}; path=/; SameSite=Strict`;
+
+            // Redirect based on role
+            if (data.role === 'ADMIN')        window.location.href = '/dashboard';
+            else if (data.role === 'STAFF')   window.location.href = '/staff/queue';
+            else                               window.location.href = '/menu';
+
+        } catch (err) {
+            showError('Connection error. Please try again.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = 'Sign in';
+        }
+    });
+
+    function showError(msg) {
+        const el = document.getElementById('error-msg');
+        el.textContent = msg;
+        el.style.display = 'block';
+        document.getElementById('submit-btn').disabled = false;
+        document.getElementById('submit-btn').innerHTML = 'Sign in';
+    }
+</script>
+</body>
+</html>

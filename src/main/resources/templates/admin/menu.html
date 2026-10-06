@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Menu — Canteen Token System</title>
+    <meta name="description" content="Admin: add, edit, and toggle menu items.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+
+<nav class="nav">
+    <a href="/" class="nav-brand"><span class="icon">🍽️</span> Canteen</a>
+    <div class="nav-links" id="nav-links-dynamic"></div>
+    <div class="nav-actions" id="nav-actions"></div>
+</nav>
+
+<div class="page">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Manage Menu</h1>
+            <p class="page-subtitle">Add, edit, or toggle availability of menu items</p>
+        </div>
+        <button onclick="openAddModal()" class="btn btn-primary">+ Add Item</button>
+    </div>
+
+    <div id="menu-container">
+        <div class="empty-state"><p>Loading menu…</p></div>
+    </div>
+</div>
+
+<!-- Add / Edit Modal -->
+<div class="modal-overlay" id="item-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <span class="modal-title" id="modal-title">Add Menu Item</span>
+            <button onclick="closeModal()" class="btn btn-ghost btn-sm">✕</button>
+        </div>
+        <form id="item-form" novalidate>
+            <input type="hidden" id="item-id">
+            <div class="form-group">
+                <label for="item-name">Item Name</label>
+                <input id="item-name" type="text" class="form-control" placeholder="e.g. Masala Dosa" required>
+            </div>
+            <div class="form-group">
+                <label for="item-price">Price (₹)</label>
+                <input id="item-price" type="number" class="form-control" placeholder="0.00" min="0" step="0.01" required>
+            </div>
+            <div class="form-group">
+                <label for="item-qty">Quantity (leave empty for unlimited)</label>
+                <input id="item-qty" type="number" class="form-control" placeholder="Unlimited" min="0" step="1">
+            </div>
+            <div class="form-group">
+                <label class="toggle-wrap" style="flex-direction:row; gap:0.75rem; align-items:center; cursor:pointer;">
+                    <label class="toggle">
+                        <input type="checkbox" id="item-available" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span>Available today</span>
+                </label>
+            </div>
+            <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+                <button type="submit" id="modal-save-btn" class="btn btn-primary flex-1">Save Item</button>
+                <button type="button" onclick="closeModal()" class="btn btn-ghost">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal-overlay" id="delete-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <span class="modal-title">Delete Item</span>
+        </div>
+        <p class="text-muted mb-2">Are you sure you want to delete "<strong id="delete-item-name"></strong>"? This cannot be undone.</p>
+        <div style="display:flex; gap:0.5rem;">
+            <button onclick="confirmDelete()" class="btn btn-danger flex-1">Yes, Delete</button>
+            <button onclick="closeDeleteModal()" class="btn btn-ghost">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script th:src="@{/js/nav.js}"></script>
+<script>
+    AUTH.initNav('amenu');
+    AUTH.requireRole('ADMIN');
+
+    let allItems = [];
+    let deleteTargetId = null;
+
+    async function loadMenu() {
+        try {
+            const res = await fetch('/api/menu/all', { headers: AUTH.headers() });
+            if (res.status === 401 || res.status === 403) { window.location.href = '/login'; return; }
+            allItems = await res.json();
+            renderMenu(allItems);
+        } catch(e) {
+            document.getElementById('menu-container').innerHTML =
+                '<div class="empty-state"><span class="empty-icon">⚠️</span><p>Failed to load menu.</p></div>';
+        }
+    }
+
+    function renderMenu(items) {
+        const container = document.getElementById('menu-container');
+
+        if (!items || items.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <span class="empty-icon">🍽️</span>
+                    <h3>No menu items yet</h3>
+                    <p>Click "+ Add Item" to add items to today's menu.</p>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Price</th>
+                            <th>Quantity</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${items.map(item => `
+                            <tr id="row-${item.id}">
+                                <td><strong>${item.name}</strong></td>
+                                <td>₹${parseFloat(item.price).toFixed(2)}</td>
+                                <td>${item.quantity === null || item.quantity === undefined ? 'Unlimited' : item.quantity}</td>
+                                <td>
+                                    <label class="toggle-wrap" style="cursor:pointer;" title="Toggle availability">
+                                        <label class="toggle">
+                                            <input type="checkbox" ${item.available ? 'checked' : ''}
+                                                   onchange="toggleItem(${item.id}, this)">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                        <span class="text-sm ${item.available ? '' : 'text-muted'}">
+                                            ${item.available ? 'Available' : 'Unavailable'}
+                                        </span>
+                                    </label>
+                                </td>
+                                <td>
+                                    <div style="display:flex; gap:0.5rem;">
+                                        <button onclick="openEditModal(${item.id})" class="btn btn-outline btn-sm">✏️ Edit</button>
+                                        <button onclick="openDeleteModal(${item.id}, '${item.name.replace(/'/g, "\\'")}')" class="btn btn-danger btn-sm">🗑️</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    async function toggleItem(id, checkbox) {
+        try {
+            const res = await fetch(`/api/menu/${id}/toggle`, {
+                method: 'PATCH',
+                headers: AUTH.headers()
+            });
+            if (res.ok) {
+                const item = await res.json();
+                const label = checkbox.parentElement.nextElementSibling;
+                if (label) label.textContent = item.available ? 'Available' : 'Unavailable';
+                showToast(`${item.name} is now ${item.available ? 'available' : 'unavailable'}`, 'success');
+            } else {
+                checkbox.checked = !checkbox.checked; // revert
+                showToast('Failed to toggle availability', 'error');
+            }
+        } catch(e) {
+            checkbox.checked = !checkbox.checked;
+            showToast('Connection error', 'error');
+        }
+    }
+
+    function openAddModal() {
+        document.getElementById('modal-title').textContent = 'Add Menu Item';
+        document.getElementById('item-id').value = '';
+        document.getElementById('item-name').value = '';
+        document.getElementById('item-price').value = '';
+        document.getElementById('item-qty').value = '';
+        document.getElementById('item-available').checked = true;
+        document.getElementById('modal-save-btn').textContent = 'Add Item';
+        document.getElementById('item-modal').classList.add('open');
+    }
+
+    function openEditModal(id) {
+        const item = allItems.find(i => i.id === id);
+        if (!item) return;
+        document.getElementById('modal-title').textContent = 'Edit Menu Item';
+        document.getElementById('item-id').value = id;
+        document.getElementById('item-name').value = item.name;
+        document.getElementById('item-price').value = item.price;
+        document.getElementById('item-qty').value = item.quantity === null ? '' : item.quantity;
+        document.getElementById('item-available').checked = item.available;
+        document.getElementById('modal-save-btn').textContent = 'Save Changes';
+        document.getElementById('item-modal').classList.add('open');
+    }
+
+    function closeModal() {
+        document.getElementById('item-modal').classList.remove('open');
+    }
+
+    function openDeleteModal(id, name) {
+        deleteTargetId = id;
+        document.getElementById('delete-item-name').textContent = name;
+        document.getElementById('delete-modal').classList.add('open');
+    }
+
+    function closeDeleteModal() {
+        document.getElementById('delete-modal').classList.remove('open');
+        deleteTargetId = null;
+    }
+
+    document.getElementById('item-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const id        = document.getElementById('item-id').value;
+        const name      = document.getElementById('item-name').value.trim();
+        const price     = parseFloat(document.getElementById('item-price').value);
+        const qtyVal    = document.getElementById('item-qty').value;
+        const quantity  = qtyVal === '' ? null : parseInt(qtyVal, 10);
+        const available = document.getElementById('item-available').checked;
+        const btn       = document.getElementById('modal-save-btn');
+
+        if (!name || isNaN(price) || price < 0) {
+            showToast('Please fill in all fields correctly', 'error');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>';
+
+        try {
+            const url    = id ? `/api/menu/${id}` : '/api/menu';
+            const method = id ? 'PUT' : 'POST';
+            const res    = await fetch(url, {
+                method,
+                headers: AUTH.headers(),
+                body: JSON.stringify({ name, price, available, quantity })
+            });
+
+            if (res.ok) {
+                closeModal();
+                showToast(id ? 'Item updated!' : 'Item added!', 'success');
+                await loadMenu();
+            } else {
+                const data = await res.json();
+                showToast(data.message || 'Failed to save item', 'error');
+            }
+        } catch(e) {
+            showToast('Connection error', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = id ? 'Save Changes' : 'Add Item';
+        }
+    });
+
+    async function confirmDelete() {
+        if (!deleteTargetId) return;
+        const id = deleteTargetId;
+        closeDeleteModal();
+
+        try {
+            const res = await fetch(`/api/menu/${id}`, {
+                method: 'DELETE',
+                headers: AUTH.headers()
+            });
+            if (res.ok || res.status === 204) {
+                showToast('Item deleted', 'success');
+                await loadMenu();
+            } else {
+                showToast('Failed to delete item', 'error');
+            }
+        } catch(e) {
+            showToast('Connection error', 'error');
+        }
+    }
+
+    loadMenu();
+</script>
+</body>
+</html>

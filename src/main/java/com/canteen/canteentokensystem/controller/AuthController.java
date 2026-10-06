@@ -1,5 +1,7 @@
 package com.canteen.canteentokensystem.controller;
 
+import com.canteen.canteentokensystem.dto.AuthDtos.LoginRequest;
+import com.canteen.canteentokensystem.dto.AuthDtos.LoginResponse;
 import com.canteen.canteentokensystem.dto.AuthDtos.RegisterRequest;
 import com.canteen.canteentokensystem.model.User;
 import com.canteen.canteentokensystem.service.UserService;
@@ -24,10 +26,9 @@ public class AuthController {
     }
 
     // POST /api/auth/login
-    // TODO (Week 5+): implement Spring Security authentication + JWT issuance here.
     @PostMapping("/login")
-    public ResponseEntity<String> login() {
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
-                .body("Login not yet implemented - see Week 5 feature branch.");
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
+        LoginResponse response = userService.login(request);
+        return ResponseEntity.ok(response);
     }
 }

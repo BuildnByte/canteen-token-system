@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Management — Admin</title>
+    <meta name="description" content="Manage user roles in the canteen token system.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+
+<nav class="nav">
+    <a href="/" class="nav-brand"><span class="icon">🍽️</span> Canteen</a>
+    <div class="nav-links" id="nav-links-dynamic"></div>
+    <div class="nav-actions" id="nav-actions"></div>
+</nav>
+
+<div class="page">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">👥 User Management</h1>
+            <p class="page-subtitle">View and update roles for all registered users</p>
+        </div>
+        <button onclick="loadUsers()" class="btn btn-outline btn-sm" id="refresh-btn">↻ Refresh</button>
+    </div>
+
+    <div id="users-container">
+        <div class="empty-state"><p>Loading users…</p></div>
+    </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script th:src="@{/js/nav.js}"></script>
+<script>
+    AUTH.initNav('ausers');
+    AUTH.requireRole('ADMIN');
+
+    async function loadUsers() {
+        document.getElementById('refresh-btn').textContent = '⏳';
+        try {
+            const res = await fetch('/api/users', { headers: AUTH.headers() });
+            if (res.status === 401 || res.status === 403) { window.location.href = '/login'; return; }
+            const users = await res.json();
+            renderUsers(users);
+        } catch(e) {
+            document.getElementById('users-container').innerHTML =
+                '<div class="empty-state"><span class="empty-icon">⚠️</span><p>Failed to load users.</p></div>';
+        } finally {
+            document.getElementById('refresh-btn').textContent = '↻ Refresh';
+        }
+    }
+
+    function renderUsers(users) {
+        const container = document.getElementById('users-container');
+        if (!users || users.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <span class="empty-icon">👥</span>
+                    <h3>No users found</h3>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${users.map(u => `
+                            <tr>
+                                <td><strong>#${u.id}</strong></td>
+                                <td>${u.name}</td>
+                                <td>${u.email}</td>
+                                <td><span class="role-badge role-${u.role}">${u.role}</span></td>
+                                <td>
+                                    <select class="form-control" style="width: auto; padding: 0.35rem 0.75rem; font-size: 0.82rem;" onchange="updateRole(${u.id}, this.value, '${u.name}')">
+                                        <option value="STUDENT" ${u.role === 'STUDENT' ? 'selected' : ''}>Student</option>
+                                        <option value="STAFF" ${u.role === 'STAFF' ? 'selected' : ''}>Staff</option>
+                                        <option value="ADMIN" ${u.role === 'ADMIN' ? 'selected' : ''}>Admin</option>
+                                    </select>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>`;
+    }
+
+    async function updateRole(userId, newRole, userName) {
+        try {
+            const res = await fetch(`/api/users/${userId}/role`, {
+                method: 'PUT',
+                headers: AUTH.headers(),
+                body: JSON.stringify({ role: newRole })
+            });
+
+            if (res.ok) {
+                showToast(`Role for ${userName} updated to ${newRole}`, 'success');
+                // Auto reload to refresh badges
+                setTimeout(loadUsers, 1000);
+            } else {
+                const data = await res.json();
+                showToast(data.message || 'Failed to update role', 'error');
+                loadUsers(); // revert UI
+            }
+        } catch(e) {
+            showToast('Connection error', 'error');
+            loadUsers();
+        }
+    }
+
+    loadUsers();
+</script>
+</body>
+</html>

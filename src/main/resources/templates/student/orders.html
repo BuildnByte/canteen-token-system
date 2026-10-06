@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Orders — Canteen Token System</title>
+    <meta name="description" content="Track all your canteen orders and token status.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+
+<nav class="nav">
+    <a href="/" class="nav-brand"><span class="icon">🍽️</span> Canteen</a>
+    <div class="nav-links" id="nav-links-dynamic"></div>
+    <div class="nav-actions" id="nav-actions"></div>
+</nav>
+
+<div class="page">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">My Orders</h1>
+            <p class="page-subtitle">All your canteen orders and their current status</p>
+        </div>
+        <a href="/menu" class="btn btn-primary">+ New Order</a>
+    </div>
+
+    <div id="orders-container">
+        <!-- Filled by JS -->
+        <div class="empty-state">
+            <span class="empty-icon" style="font-size:2rem;">⏳</span>
+            <p>Loading your orders…</p>
+        </div>
+    </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script th:src="@{/js/nav.js}"></script>
+<script>
+    AUTH.initNav('orders');
+    AUTH.requireRole('STUDENT', 'STAFF', 'ADMIN');
+
+    const STATUS_LABELS = {
+        PENDING:   { icon: '🕐', label: 'Pending',   class: 'PENDING'   },
+        PREPARING: { icon: '👨‍🍳', label: 'Preparing', class: 'PREPARING' },
+        READY:     { icon: '✅', label: 'Ready!',    class: 'READY'     },
+        COLLECTED: { icon: '📦', label: 'Collected', class: 'COLLECTED' }
+    };
+
+    async function loadOrders() {
+        const studentId = AUTH.id();
+        if (!studentId) { window.location.href = '/login'; return; }
+
+        try {
+            const res = await fetch(`/api/tokens?studentId=${studentId}`, {
+                headers: AUTH.headers()
+            });
+
+            if (res.status === 401 || res.status === 403) {
+                window.location.href = '/login'; return;
+            }
+
+            const orders = await res.json();
+            const container = document.getElementById('orders-container');
+
+            if (!Array.isArray(orders) || orders.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <span class="empty-icon">🍽️</span>
+                        <h3>No orders yet</h3>
+                        <p>Browse the menu and place your first order!</p>
+                        <a href="/menu" class="btn btn-primary mt-2">View Menu</a>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = orders.map(order => {
+                const st = STATUS_LABELS[order.status] || { icon: '?', label: order.status, class: order.status };
+                let items = [];
+                try { items = JSON.parse(order.items); } catch(e) {}
+                const itemSummary = items.map(i => `${i.name} ×${i.qty}`).join(', ');
+                const dt = new Date(order.createdAt);
+                const dtStr = dt.toLocaleString('en-IN', { dateStyle:'medium', timeStyle:'short' });
+
+                return `
+                    <div class="order-card">
+                        <div class="order-token-num">#${order.id}</div>
+                        <div class="order-info" style="flex:1;">
+                            <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                                <strong>Token #${order.id}</strong>
+                                <span class="badge badge-${order.status}">${st.icon} ${st.label}</span>
+                            </div>
+                            <div class="order-items">${itemSummary || order.items}</div>
+                            <div class="order-time">Placed: ${dtStr}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+        } catch(err) {
+            document.getElementById('orders-container').innerHTML =
+                '<div class="empty-state"><span class="empty-icon">⚠️</span><p>Failed to load orders. Please refresh.</p></div>';
+        }
+    }
+
+    loadOrders();
+    // Poll every 15 seconds to show live status updates
+    setInterval(loadOrders, 15000);
+</script>
+</body>
+</html>
