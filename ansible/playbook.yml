@@ -1,0 +1,71 @@
+---
+- name: Provision Canteen Token System Target Node
+  hosts: canteen_servers
+  become: yes # Run tasks as root (sudo)
+  
+  vars:
+    app_user: canteen_user
+    app_port: 8082
+
+  tasks:
+    - name: Update APT package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install prerequisite packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - ufw
+        state: present
+
+    - name: Add Docker GPG apt Key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker APT repository
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable
+        state: present
+
+    - name: Install Docker Engine
+      apt:
+        name: docker-ce
+        state: present
+
+    - name: Ensure Docker service is running and enabled
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Create dedicated application user
+      user:
+        name: "{{ app_user }}"
+        state: present
+        shell: /bin/bash
+        groups: docker
+        append: yes
+
+    - name: Create application deployment directory
+      file:
+        path: /opt/canteen-token-system
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+
+    - name: Allow application port through firewall
+      ufw:
+        rule: allow
+        port: "{{ app_port }}"
+        proto: tcp
+
+    - name: Enable UFW firewall
+      ufw:
+        state: enabled
